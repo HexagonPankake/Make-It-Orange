@@ -19,11 +19,14 @@
         from pyscript import when
         import pyodide_js
         await pyodide_js.loadPackage('pillow')
+        await pyodide_js.loadPackage('numpy')
         from PIL import Image, ImageFilter
         import os, re
         from js import document, console, window, Uint8Array, File, navigator
-        import pyodide, asyncio, io
+        import pyodide, asyncio, io, numpy
 
+        # this function is stolen
+        # but NOT ai
         async def _upload_change_and_show(e):
             # print(e)
             #Get the first file from upload
@@ -60,7 +63,6 @@
             document.getElementById("output_upload").replaceChildren(new_image)
         
         async def _upload_change_and_show_paste(e):
-            # print(e)
             #Get the first file from upload
             first_item = e.detail.files
 
@@ -103,42 +105,14 @@
         def Process(pic, color_A= (0,0,0), color_B= (255, 255, 255)):
             if pic.mode != "RGBA":
                 pic= pic.convert("RGBA")
-            pix=pic.load()
-            for x in range(pic.size[0]):
-                for y in range(pic.size[1]):
-                    r,g,b,a= pix[x,y]
-                    col_A= (color_A[0],color_A[1],color_A[2],a)
-                    col_B= (color_B[0],color_B[1],color_B[2],a)
-                    pix[x,y]= IntList(tuple(Lerp(col_A, col_B, ((sum(pix[x,y])-a)/(3*255)))))    
-            return pic
-        def Lerp(a: tuple|list|int|float, b: tuple|list|int|float, i: float):
-            if type(a)== int or type(a)== float:
-                if type(b)==int or type(b)== float:
-                    return (1-i)*a+i*b
-                else:
-                    RetVal=[]
-                    for n in range(len(b)):
-                        RetVal.append(Lerp(b[n],a,i))
-                    return RetVal
 
-            else:
-                if type(b)== tuple or type(b)== list:
-                    if len(a)==len(b):
-                        RetVal=[]
-                        for n in range(len(a)):
-                            RetVal.append(Lerp(a[n],b[n],i))
-                        return RetVal
-                else:
-                    RetVal=[]
-                    for n in range(len(a)):
-                        RetVal.append(Lerp(a[n],b,i))
-                    return RetVal
-        def IntList(inp:tuple|list):
-            Ret=[]
-            for i in inp:
-                Ret.append(int(i))
-            if type(inp)==tuple: Ret= tuple(Ret)
-            return Ret
+            im= numpy.asarray(pic)
+            alpha= im[:,:,-1]
+            im= numpy.sum(im,axis=2,keepdims=True)/(im.shape[2]*255)
+            im= color_B*im+color_A*(1-im)
+            im= numpy.append(im,numpy.reshape(alpha,(im.shape[0], im.shape[1], 1)),2)
+
+            return Image.fromarray(numpy.uint8(im))
 
 
     </script>

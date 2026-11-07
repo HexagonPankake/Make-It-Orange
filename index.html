@@ -5,9 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script type="module" src="https://pyscript.net/releases/2026.7.3/core.js"></script>
     <title>Orange It</title>
+    <style>
+        div.SliderHolder{
+        }
+        div.SliderHolder label{
+            margin: 100;
+        }
+    </style>
 </head>
 <body>
-    <p>Color selection:</p>
+    <p>Preset:</p>
     <select id="color">
         <option value="Orange">Orange</option>
         <option value="Yellow">Yellow</option>
@@ -16,6 +23,18 @@
         <option value="Purple">Purple</option>
         <option value="Red">Red</option>
     </select>
+    <p>Colors:</p>
+    
+    <div class="SliderHolder">
+    <input type="range" name="Red" min="0" max="255">
+    <label for="Red">Red</label><br>
+    <input type="range" name="Green" min="0" max="255">
+    <label for="Green">Green</label><br>
+    <input type="range" name="Blue" min="0" max="255">
+    <label for="Blue">Blue</label><br>
+    </div>
+    <canvas id="Sample_A" width="50", height="50"></canvas>
+
     <div style="margin: 30px;"></div>
     <input type="file" id="input" onpaste="Test_">
     <div id="twoinput"></div>
@@ -29,8 +48,13 @@
         await pyodide_js.loadPackage('numpy')
         from PIL import Image, ImageFilter
         import os, re
-        from js import document, console, window, Uint8Array, File, navigator
+        from js import document, console, window, Uint8Array, File, navigator, fetch
         import pyodide, asyncio, io, numpy
+
+        R=document.getElementsByName('Red')[0];
+        G=document.getElementsByName('Green')[0];
+        B=document.getElementsByName('Blue')[0];
+        HoldImage=0
 
         Colors= {
             'Orange':(255, 170, 33),
@@ -44,11 +68,14 @@
         ColorSelection= document.getElementById('color')
 
         async def _upload_change_and_show(e):
-            color= Colors[ColorSelection.value]
+            global HoldImage
+            color= (int(R.value),int(G.value),int(B.value))
             
             #Get the first file from upload
             file_list = e.target.files
             first_item = file_list.item(0)
+            HoldImage=first_item
+            
 
             #Get the data from the files arrayBuffer as an array of unsigned bytes
             array_buf = Uint8Array.new(await first_item.arrayBuffer())
@@ -56,6 +83,7 @@
             #BytesIO wants a bytes-like object, so convert to bytearray first
             bytes_list = bytearray(array_buf)
             my_bytes = io.BytesIO(bytes_list) 
+            HoldImage= my_bytes
 
             #Create PIL image from np array
             my_image = Image.open(my_bytes)
@@ -63,7 +91,7 @@
             #Log some of the image data for testing
             console.log(f"{my_image.format= } {my_image.width= } {my_image.height= }")
 
-            my_image = Process(my_image, (0,0,0), color)
+            my_image = Process(my_image, color)
 
             #Convert Pillow object array back into File type that createObjectURL will take
             my_stream = io.BytesIO()
@@ -78,7 +106,8 @@
             document.getElementById("output_upload").replaceChildren(new_image)
         
         async def _upload_change_and_show_paste(e):
-            color= Colors[ColorSelection.value]
+            global HoldImage
+            color= (int(R.value),int(G.value),int(B.value))
             
             #Get the first file from upload
             first_item = e.detail.files
@@ -89,6 +118,7 @@
             #BytesIO wants a bytes-like object, so convert to bytearray first
             bytes_list = bytearray(array_buf)
             my_bytes = io.BytesIO(bytes_list) 
+            HoldImage= my_bytes
 
             #Create PIL image from np array
             my_image = Image.open(my_bytes)
@@ -96,7 +126,42 @@
             #Log some of the image data for testing
             console.log(f"{my_image.format= } {my_image.width= } {my_image.height= }")
 
-            my_image = Process(my_image, (0,0,0), color)
+            my_image = Process(my_image, color)
+
+            #Convert Pillow object array back into File type that createObjectURL will take
+            my_stream = io.BytesIO()
+            my_image.save(my_stream, format="PNG")
+
+            #Create a JS File object with our data and the proper mime type
+            image_file = File.new([Uint8Array.new(my_stream.getvalue())], "new_image_file.png", {type: "image/png"})
+
+            #Create new tag and insert into page
+            new_image = document.createElement('img')
+            new_image.src = window.URL.createObjectURL(image_file)
+            document.getElementById("output_upload").replaceChildren(new_image)
+        
+        async def _update_and_show(e):
+            global HoldImage
+            color= (int(R.value),int(G.value),int(B.value))
+            
+            # #Get the first file from upload
+            # first_item = HoldImage
+            # # console.log(HoldImage)
+
+            # #Get the data from the files arrayBuffer as an array of unsigned bytes
+            # array_buf = Uint8Array.new(await first_item.arrayBuffer())
+
+            # #BytesIO wants a bytes-like object, so convert to bytearray first
+            # bytes_list = bytearray(array_buf)
+            # my_bytes = io.BytesIO(bytes_list) 
+
+            #Create PIL image from np array
+            my_image = Image.open(HoldImage)
+
+            #Log some of the image data for testing
+            console.log(f"{my_image.format= } {my_image.width= } {my_image.height= }")
+
+            my_image = Process(my_image, color)
 
             #Convert Pillow object array back into File type that createObjectURL will take
             my_stream = io.BytesIO()
@@ -114,22 +179,76 @@
         document.getElementById("input").addEventListener("change", upload_file)
         upload_file = pyodide.ffi.create_proxy(_upload_change_and_show_paste)
         document.getElementById("twoinput").addEventListener("change", upload_file)
+        upload_file = pyodide.ffi.create_proxy(_update_and_show)
+        R.addEventListener('change',upload_file)
+        G.addEventListener('change',upload_file)
+        B.addEventListener('change',upload_file)
 
-        def Process(pic, color_A= (0,0,0), color_B= (255, 255, 255)):
+        def Process(pic, color_B= (255, 255, 255)):
             if pic.mode != "RGBA":
                 pic= pic.convert("RGBA")
 
             im= numpy.asarray(pic)
             alpha= im[:,:,-1]
             im= numpy.sum(im,axis=2,keepdims=True)/(im.shape[2]*255)
-            im= color_B*im+color_A*(1-im)
+            im= color_B*im
             im= numpy.append(im,numpy.reshape(alpha,(im.shape[0], im.shape[1], 1)),2)
 
             return Image.fromarray(numpy.uint8(im))
 
-
     </script>
     <script>
+        let Sample_A= document.getElementById("Sample_A");
+        cont= Sample_A.getContext('2d');
+        R=document.getElementsByName('Red')[0];
+        G=document.getElementsByName('Green')[0];
+        B=document.getElementsByName('Blue')[0];
+        Preset=document.getElementById('color');
+        const Colors= {
+            'Orange':[255, 170, 33],
+            'Yellow':[255,255,0],
+            'Green':[0,255,0],
+            'Blue':[0,0,255],
+            'Purple':[255,0,255],
+            'Red':[255,0,0]
+        }
+
+        function UpdateColorSample(){
+            Color="#"+AsHex(R.value)+AsHex(G.value)+AsHex(B.value);
+            // console.log(Color);
+            cont.fillStyle=Color;
+            cont.fillRect(0,0,50,50);
+        }
+        
+        Choice=Colors['Orange'];
+        // console.log(Choice);
+        R.value=Choice[0];
+        G.value=Choice[1];
+        B.value=Choice[2];
+        UpdateColorSample();
+
+        function AsHex(Val){
+            if (Val==0){
+                return "00"
+            }
+            return Number(Val).toString(16);
+        }
+
+        R.addEventListener('change',UpdateColorSample);
+        G.addEventListener('change',UpdateColorSample);
+        B.addEventListener('change',UpdateColorSample);
+
+        Preset.addEventListener('change',(event)=>{
+            Choice=Colors[Preset.value];
+            console.log(Choice);
+            R.value=Choice[0];
+            G.value=Choice[1];
+            B.value=Choice[2];
+            R.dispatchEvent(new Event('change'));
+            G.dispatchEvent(new Event('change'));
+            B.dispatchEvent(new Event('change'));
+        })
+
         document.addEventListener('paste',(event)=>{
             In= document.getElementById('twoinput');
             In.value= event.clipboardData.files[0];

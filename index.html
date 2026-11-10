@@ -190,6 +190,7 @@
 
             im= numpy.asarray(pic)
             alpha= im[:,:,-1]
+            im= im[:,:,0:3]
             im= numpy.sum(im,axis=2,keepdims=True)/(im.shape[2]*255)
             im= color_B*im
             im= numpy.append(im,numpy.reshape(alpha,(im.shape[0], im.shape[1], 1)),2)
